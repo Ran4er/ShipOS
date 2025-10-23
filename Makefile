@@ -4,10 +4,26 @@ NASM_FLAGS=-f elf64
 LD=ld
 LD_FLAGS=--nmagic --script=$(LINKER)
 
-CC=gcc 
+GCC_VERSION := $(shell gcc-13 -dumpversion 2>/dev/null | cut -d. -f1)
+ifneq ($(GCC_VERSION),13)
+    GCC_VERSION := $(shell gcc -dumpversion 2>/dev/null | cut -d. -f1)
+    ifeq ($(GCC_VERSION),13)
+        CC=gcc
+    else
+        $(warning "GCC version 13 not found. Trying default gcc but interrupts may not work correctly.")
+        CC=gcc
+    endif
+else
+    CC=gcc-13
+endif
+
 CFLAGS=-Wall -c -ggdb -ffreestanding -mgeneral-regs-only
 
-GRUB=grub-mkrescue
+GRUB := $(shell which grub2-mkrescue 2>/dev/null || which grub-mkrescue 2>/dev/null)
+ifeq ($(GRUB),)
+    $(error "Neither grub2-mkrescue nor grub-mkrescue found. Please install GRUB tools.")
+endif
+
 GRUB_FLAGS=-o
 
 LINKER=x86_64/boot/linker.ld
@@ -76,6 +92,26 @@ clean:
 	rm -f $(ISO_DIR)/**/kernel.*
 
 install:
-	apt install xorriso
-	apt install mtools
-	apt install qemu-system-x86 
+	@if [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then \
+		echo "Installing for Fedora/RHEL..."; \
+		sudo dnf install -y xorriso mtools qemu-system-x86 grub2-tools; \
+		sudo snap install gcc-13; \
+	elif [ -f /etc/debian_version ] || [ -f /etc/lsb-release ]; then \
+		echo "Installing for Debian/Ubuntu..."; \
+		sudo apt update; \
+		sudo apt install -y gcc-13 xorriso mtools qemu-system-x86 grub2-common grub-pc-bin; \
+	elif [ -f /etc/arch-release ]; then \
+		echo "Installing for Arch Linux..."; \
+		sudo pacman -Syu --noconfirm && \
+		sudo pacman -S --noconfirm gcc xorriso mtools qemu-system-x86 grub; \
+	else \
+		echo "Unknown distribution. Please install manually: gcc-13 (or gcc), xorriso, mtools, qemu-system-x86, grub2-mkrescue/grub-mkrescue"; \
+	fi
+
+check-deps:
+	@echo "Checking dependencies..."; \
+	echo "NASM: $(shell which nasm 2>/dev/null || echo 'NOT FOUND')"; \
+	echo "GCC: $(CC) (version: $(GCC_VERSION))"; \
+	echo "LD: $(shell which ld 2>/dev/null || echo 'NOT FOUND')"; \
+	echo "GRUB: $(GRUB)"; \
+	echo "QEMU: $(shell which qemu-system-x86_64 2>/dev/null || echo 'NOT FOUND')"
