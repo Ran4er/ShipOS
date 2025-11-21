@@ -14,22 +14,10 @@
 #include "sched/threads.h"
 #include "sched/scheduler.h"
 
-
-
-void print_num(uint32_t num) {
-    while (1) {
-        printf("Hello from thread %d\n", num);
-        // yield();
-    }
-}
-void thread_function(int argc, struct argument *args) {
-    uint32_t num = *((uint32_t*) args[0].value);
-    print_num(num);
-}
-
-
+// FIX: Удалена дублирующая thread_function (она уже в proc.c)
 
 int kernel_main(){
+    // FIX: Убран вызов несуществующей функции cls()
     init_tty();
     
     for (uint8_t i=0; i < TERMINALS_NUMBER; i++) {
@@ -37,29 +25,56 @@ int kernel_main(){
         printf("TTY %d\n", i);
     }
     set_tty(0);
-    printf(
-    " CR3: %x\n", rcr3()
-    );
+    
+    printf("=== ShipOS Kernel Boot ===\n");
+    printf("CR3: %p\n", rcr3());
 
-    print("$ \n");
-    printf("Kernel end at address: %d\n", KEND);
-    printf("Kernel size: %d\n", KEND - KSTART);
+    printf("\nMemory layout:\n");
+    printf("Kernel start: %p\n", KSTART);
+    printf("Kernel end:   %p\n", KEND);
+    printf("Kernel size:  %lu KB\n", ((uint64_t)KEND - KSTART) / 1024);
 
-    kinit(KEND, INIT_PHYSTOP);
-    pagetable_t kernel_table = kvminit(INIT_PHYSTOP, PHYSTOP);
-    printf("kernel table: %p\n", kernel_table);
-    kinit(INIT_PHYSTOP, PHYSTOP);
-    printf("Successfully allocated physical memory up to %p\n", PHYSTOP);
-    printf("%d pages available in allocator\n", count_pages());
-
+    // Инициализация buddy аллокатора на всей доступной памяти
+    printf("\nInitializing buddy allocator...\n");
+    kinit((uint64_t)KEND, PHYSTOP);
+    
+    // Отладочный вывод состояния памяти
+    kalloc_dump();
+    
+    // Инициализация kernel page tables
+    printf("\nInitializing kernel paging...\n");
+    pagetable_t kernel_table = kvminit(KSTART, PHYSTOP);
+    printf("Kernel page table at: %p\n", kernel_table);
+    
+    // Проверка, что paging работает
+    printf("Successfully mapped physical memory:\n");
+    printf("  %p - %p\n", KSTART, PHYSTOP);
+    
+    // Выводим свободную память
+    uint64_t free_mem_mb = kalloc_free_memory() / (1024 * 1024);
+    printf("Free memory: %lu MB\n", free_mem_mb);
+    
+    // Дальнейшая инициализация...
+    printf("\nInitializing process system...\n");
     struct proc_node *init_proc_node = procinit();
-    printf("Init proc node %p\n", init_proc_node);
+    printf("Init proc node: %p\n", init_proc_node);
+    
     struct thread *init_thread = peek_thread_list(init_proc_node->data->threads);
-    printf("Got init thread\n");
+    printf("Init thread: %p\n", init_thread);
 
+    printf("\nSetting up IDT...\n");
     setup_idt();
+    
+    printf("=== Kernel initialization complete ===\n");
 
-    //scheduler();
+    // scheduler(); // Раскомментируйте, когда будет готов
+
+    // Тест аллокатора (можно удалить в продакшене)
+    void *test = kmalloc(12345);
+    printf("Test kmalloc(12345) = %p\n", test);
+    void *test2 = krealloc(test, 54321);
+    printf("Test krealloc(%p, 54321) = %p\n", test, test2);
+    kfree(test2);
 
     while(1) {};
     return 0;

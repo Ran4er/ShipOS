@@ -3,18 +3,23 @@
 // Copyright (c) 2023 SHIPOS. All rights reserved.
 //
 
-
 #include <stdarg.h>
+#include <stddef.h>  // Для NULL
 #include "tty.h"
-//#include "../lib/include/stdint.h"
 #include <inttypes.h>
 #include "../lib/include/memset.h"
+#include "../lib/include/panic.h"
 
 #define TERMINALS_NUMBER 7
 static tty_structure tty_terminals[TERMINALS_NUMBER];
 static tty_structure *active_tty;
 static struct spinlock printf_spinlock;
 static struct spinlock print_spinlock;
+
+// Форвард-объявления вспомогательных функций
+static void scroll(void);
+static void write_char_to_buffer(char ch);
+static void update_cursor(void);
 
 void set_fg(enum vga_colors _fg) {
     active_tty->fg = _fg;
@@ -36,7 +41,7 @@ void init_tty() {
     set_tty(0);
     init_spinlock(&printf_spinlock, "printf spinlock");
     init_spinlock(&print_spinlock, "print spinlock");
-};
+}
 
 void set_tty(uint8_t terminal) {
     if (TERMINALS_NUMBER <= terminal) {
@@ -76,7 +81,7 @@ struct char_with_color make_char(char value, enum vga_colors fg, enum vga_colors
     return res;
 }
 
-void scroll() {
+static void scroll() {
     for (int i = 1; i < VGA_HEIGHT; i++) {
         for (int j = 0; j < VGA_WIDTH; j++) {
             active_tty->tty_buffer[(i - 1) * VGA_WIDTH + j] = active_tty->tty_buffer[i * VGA_WIDTH + j];
@@ -89,25 +94,58 @@ void scroll() {
     active_tty->pos = 0;
 }
 
-void putchar(char *c) {
-    if (active_tty->line >= VGA_HEIGHT) scroll();
-
-    if (*c == '\n') {
+// FIX: putchar теперь принимает char, а не const char*
+void putchar(char ch) {
+    if (ch == '\n') {
         active_tty->line++;
         active_tty->pos = 0;
+        if (active_tty->line >= VGA_HEIGHT) {
+            scroll();
+        }
+    } else if (ch == '\r') {
+        active_tty->pos = 0;
+    } else if (ch == '\t') {
+        int spaces = 8 - (active_tty->pos % 8);
+        for (int i = 0; i < spaces; i++) {
+            putchar(' ');
+        }
+    } else if (ch == '\b') {
+        if (active_tty->pos > 0) {
+            active_tty->pos--;
+            write_char_to_buffer(' ');
+        }
     } else {
-        *(active_tty->tty_buffer + active_tty->line * VGA_WIDTH + active_tty->pos) = make_char(*c, active_tty->fg,
-                                                                                               active_tty->bg);
-        active_tty->pos += 1;
-        active_tty->line += active_tty->pos / VGA_WIDTH;
-        active_tty->pos %= VGA_WIDTH;
+        write_char_to_buffer(ch);
+        active_tty->pos++;
+        if (active_tty->pos >= VGA_WIDTH) {
+            active_tty->pos = 0;
+            active_tty->line++;
+            if (active_tty->line >= VGA_HEIGHT) {
+                scroll();
+            }
+        }
     }
+    update_cursor();
+}
+
+static void write_char_to_buffer(char ch) {
+    int index = active_tty->line * VGA_WIDTH + active_tty->pos;
+    active_tty->tty_buffer[index] = make_char(ch, active_tty->fg, active_tty->bg);
+}
+
+static void update_cursor(void) {
+    uint16_t pos = active_tty->line * VGA_WIDTH + active_tty->pos;
+    outb(0x3D4, 0x0F);
+    outb(0x3D5, (uint8_t)(pos & 0xFF));
+    outb(0x3D4, 0x0E);
+    outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF));
 }
 
 void print(const char *string) {
+    if (string == NULL) return;
     acquire_spinlock(&print_spinlock);
     while (*string != 0) {
-        putchar(string++);
+        putchar(*string++);  // FIX: Передаем символ, а не указатель
     }
     write_buffer(active_tty->tty_buffer);
     release_spinlock(&print_spinlock);
@@ -146,58 +184,55 @@ void ptoa(uint64_t num, char *str) {
 }
 
 void printf(const char *format, ...) {
+    if (format == NULL) return;
+    
     acquire_spinlock(&printf_spinlock);
     va_list varargs;
     va_start(varargs, format);
     char digits_buf[100];
-    for (int i = 0; i < 100; i++) digits_buf[i] = 0;
+    memset(digits_buf, 0, 100);
+    
     while (*format) {
-        switch (*format) {
-            case '%':
-                format++;
-                switch (*format) {
-                    case 'd':
-                        itoa(va_arg(varargs,
-                        int), digits_buf, 10);
-                        print(digits_buf);
-                        break;
-                    case 'o':
-                        itoa(va_arg(varargs,
-                        int), digits_buf, 8);
-                        print(digits_buf);
-                        break;
-                    case 'x':
-                        itoa(va_arg(varargs,
-                        int), digits_buf, 16);
-                        print(digits_buf);
-                        break;
-                    case 'b':
-                        itoa(va_arg(varargs,
-                        int), digits_buf, 2);
-                        print(digits_buf);
-                        break;
-                    case 'p':
-                        ptoa(va_arg(varargs, uint64_t), digits_buf);
-                        print(digits_buf);
-                        break;
-                    case 's':
-                        print(va_arg(varargs,
-                        char*));
-                        break;
-                    case '%':
-                        putchar("%");
-                        break;
-                    default:
-                        putchar("#");
-                        write_buffer(active_tty->tty_buffer);
-                }
-                break;
-            default:
-                putchar(format);
-                write_buffer(active_tty->tty_buffer);
+        if (*format == '%') {
+            format++;
+            if (*format == '\0') break;
+            
+            switch (*format) {
+                case 'd':
+                    itoa(va_arg(varargs, int), digits_buf, 10);
+                    print(digits_buf);
+                    break;
+                case 'o':
+                    itoa(va_arg(varargs, int), digits_buf, 8);
+                    print(digits_buf);
+                    break;
+                case 'x':
+                    itoa(va_arg(varargs, int), digits_buf, 16);
+                    print(digits_buf);
+                    break;
+                case 'b':
+                    itoa(va_arg(varargs, int), digits_buf, 2);
+                    print(digits_buf);
+                    break;
+                case 'p':
+                    ptoa(va_arg(varargs, uint64_t), digits_buf);
+                    print(digits_buf);
+                    break;
+                case 's':
+                    print(va_arg(varargs, char*));
+                    break;
+                case '%':
+                    putchar('%');
+                    break;
+                default:
+                    putchar('#');
+            }
+        } else {
+            putchar(*format);  // FIX: Передаем символ, а не указатель
+            write_buffer(active_tty->tty_buffer);
         }
         format++;
     }
+    va_end(varargs);
     release_spinlock(&printf_spinlock);
 }
-

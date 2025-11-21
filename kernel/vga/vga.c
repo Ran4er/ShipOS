@@ -10,8 +10,8 @@ struct vga_char;
 struct char_with_color *const VGA_ADDRESS = (void *) 0xB8000;
 static int line = 0;
 static int pos = 0;
-static enum vga_colors fg = DEFAULT_FG_COLOR;
-static enum vga_colors bg = DEFAULT_BG_COLOR;
+//static enum vga_colors fg = DEFAULT_FG_COLOR;
+//static enum vga_colors bg = DEFAULT_BG_COLOR;
 
 
 void clear_vga() {

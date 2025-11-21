@@ -3,18 +3,16 @@
 // Copyright (c) 2023 SHIPOS. All rights reserved.
 //
 
-
 #ifndef PAGING_H
 #define PAGING_H
 
 #include "stdbool.h"
-//#include "../lib/include/stdint.h"
 #include <inttypes.h>
+#include "../kalloc/kalloc.h"
 
 #define ENTRIES_COUNT 512
 
 typedef uint64_t page_entry_raw;
-
 typedef page_entry_raw* pagetable_t;
 
 struct page_entry {
@@ -50,7 +48,7 @@ struct page_entry {
     uint32_t ign2; // 15 bits ?
 
     // Exec-disable
-    bool xd; // 😆😆😆
+    bool xd;
 };
 
 struct page_entry_t {
@@ -58,7 +56,6 @@ struct page_entry_t {
 };
 
 page_entry_raw encode_page_entry(struct page_entry);
-
 struct page_entry decode_page_entry(page_entry_raw);
 
 void init_paging();
@@ -67,6 +64,7 @@ void print_vm(pagetable_t);
 
 pagetable_t kvminit(uint64_t, uint64_t);
 
-struct page_entry_raw *walk(pagetable_t tbl, uint64_t va, bool alloc);
+// FIX: Убрать лишний 'struct' - page_entry_raw это typedef, не структура
+page_entry_raw *walk(pagetable_t tbl, uint64_t va, bool alloc);
 
 #endif

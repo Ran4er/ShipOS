@@ -13,10 +13,15 @@ struct context kcontext;
 struct context *kcontext_ptr = &kcontext;
 uint32_t current_proc_rounds = 0;
 
+// FIX: Добавлено возвращаемое значение во всех ветках
 struct thread *get_next_thread() {
-    if (proc_list == 0) panic("schedule: no procs");
+    if (proc_list == NULL) {
+        panic("schedule: no procs");
+        return NULL;  // FIX: Добавлен return
+    }
+    
     struct proc *first_proc = peek_proc_list(proc_list);
-    struct proc *current_proc;
+    struct proc *current_proc = first_proc;
 
     if (current_proc_rounds >= ROUNDS_PER_PROC) {
         current_proc_rounds = 0;
@@ -26,8 +31,10 @@ struct thread *get_next_thread() {
     do {
         current_proc = peek_proc_list(proc_list);
 
-        // If proc has threads
-        if (current_proc->threads == 0) panic("schedule: proc with no threads\n");
+        if (current_proc->threads == NULL) {
+            panic("schedule: proc with no threads");
+            return NULL;  // FIX: Добавлен return
+        }
 
         struct thread *first_thread = peek_thread_list(current_proc->threads);
         struct thread *current_thread;
@@ -36,6 +43,7 @@ struct thread *get_next_thread() {
             current_thread = peek_thread_list(current_proc->threads);
             shift_thread_list(&(current_proc->threads));
             if (current_thread->state == RUNNABLE) {
+                current_proc_rounds++;
                 return current_thread;
             }
         } while (peek_thread_list(current_proc->threads) != first_thread);
@@ -44,19 +52,24 @@ struct thread *get_next_thread() {
         shift_proc_list(&proc_list);
     } while (peek_proc_list(proc_list) != first_proc);
 
-    panic("shcedule: no available threads\n");
+    panic("schedule: no available threads");
+    return NULL;  // FIX: Добавлен return
 }
 
 void scheduler() {
     while (1) {
-        //printf("scheduling\n");
         struct thread *next_thread = get_next_thread();
+        if (next_thread == NULL) {
+            panic("scheduler: no next thread");
+        }
         current_cpu.current_thread = next_thread;
         switch_context(&kcontext_ptr, next_thread->context);
     }
 }
 
 void yield() {
-    //printf("yield\n");
+    if (current_cpu.current_thread == NULL) {
+        panic("yield: no current thread");
+    }
     switch_context(&(current_cpu.current_thread->context), kcontext_ptr);
 }

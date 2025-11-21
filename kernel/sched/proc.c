@@ -3,10 +3,22 @@
 // Copyright (c) 2023 SHIPOS. All rights reserved.
 //
 
-
 #include "proc.h"
 #include "../lib/include/panic.h"
 #include "sched_states.h"
+
+// FIX: Объявить thread_function как static, чтобы она была только в этом файле
+static void thread_function(void *arg) {
+    struct argument *args = (struct argument *)arg;
+    if (args == NULL || args->value == NULL) {
+        panic("thread_function: invalid args");
+    }
+    
+    uint32_t num = *((uint32_t*)args->value);
+    while (1) {
+        printf("Hello from thread %d\n", num);
+    }
+}
 
 struct cpu current_cpu;
 struct spinlock pid_lock;
@@ -24,14 +36,13 @@ pid_t generate_pid() {
 
 struct proc *allocproc(void) {
     struct proc *proc = kalloc();
-
-    if (proc == 0) {
-        panic("Failed to alloc proc\n");
+    if (proc == NULL) {
+        panic("allocproc: kalloc failed");
     }
-
-    pid_t pid = generate_pid();
     
-    proc->threads = 0;
+    pid_t pid = generate_pid();
+    proc->pid = pid;
+    proc->threads = NULL;
     proc->killed = 0;
 
     acquire_spinlock(&proc_lock);
@@ -52,13 +63,17 @@ struct proc_node *procinit(void) {
     static uint32_t arg_value2 = 2;
     static struct argument arg1;
     static struct argument arg2;
+    
     arg1.arg_size = sizeof(uint32_t);
     arg1.value = &arg_value1;
     arg2.arg_size = sizeof(uint32_t);
     arg2.value = &arg_value2;
+    
     printf("arg initialized\n");
+    
     struct thread *new_thread1 = create_thread(thread_function, 1, &arg1);
     struct thread *new_thread2 = create_thread(thread_function, 1, &arg2);
+    
     printf("thread initialized\n");
     change_thread_state(new_thread1, RUNNABLE);
     change_thread_state(new_thread2, RUNNABLE);
@@ -72,9 +87,13 @@ struct proc_node *procinit(void) {
 
 void push_proc_list(struct proc_node **list, struct proc *proc) {
     struct proc_node *new_node = kalloc();
+    if (new_node == NULL) {
+        panic("push_proc_list: kalloc failed");
+    }
+    
     new_node->data = proc;
-    if ((*list) != 0) {
-        new_node->next = (*list);
+    if (*list != NULL) {
+        new_node->next = *list;
         new_node->prev = (*list)->prev;
         (*list)->prev->next = new_node;
         (*list)->prev = new_node;
@@ -86,35 +105,38 @@ void push_proc_list(struct proc_node **list, struct proc *proc) {
 }
 
 struct proc *pop_proc_list(struct proc_node **list) {
-    if (*list == 0) {
-        panic("Empty proc list while popping\n");
-    } else {
-        struct proc* p = (*list)->data;
-        if ((*list)->next = (*list)) {
-            kfree(*list);
-            *list = 0;
-        } else {
-            (*list)->prev->next = (*list)->next;
-            (*list)->next->prev = (*list)->prev;
-            kfree(*list);
-        }
-        return p;
+    if (*list == NULL) {
+        panic("pop_proc_list: empty list");
+        return NULL;
     }
+    
+    struct proc *p = (*list)->data;
+    struct proc_node *node_to_free = *list;
+    
+    if ((*list)->next == *list) {
+        *list = NULL;
+    } else {
+        (*list)->prev->next = (*list)->next;
+        (*list)->next->prev = (*list)->prev;
+        *list = (*list)->next;
+    }
+    
+    kfree(node_to_free);
+    return p;
 }
 
 void shift_proc_list(struct proc_node **list) {
-    if (*list == 0) {
-        panic("Empty proc list while shifting\n");
+    if (*list == NULL) {
+        panic("shift_proc_list: empty list");
     } else {
         *list = (*list)->next;
     }
 }
 
 struct proc *peek_proc_list(struct proc_node *list) {
-    if (list == 0) {
-        panic("Empty proc list while peeking\n");
-    } else {
-        return list->data;
+    if (list == NULL) {
+        panic("peek_proc_list: empty list");
+        return NULL;
     }
+    return list->data;
 }
-

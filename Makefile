@@ -103,7 +103,7 @@ install:
 	elif [ -f /etc/arch-release ]; then \
 		echo "Installing for Arch Linux..."; \
 		sudo pacman -Syu --noconfirm && \
-		sudo pacman -S --noconfirm gcc xorriso mtools qemu-system-x86 grub; \
+		sudo pacman -S --noconfirm gcc-13 xorriso mtools qemu-system-x86 grub; \
 	else \
 		echo "Unknown distribution. Please install manually: gcc-13 (or gcc), xorriso, mtools, qemu-system-x86, grub2-mkrescue/grub-mkrescue"; \
 	fi

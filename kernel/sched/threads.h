@@ -15,15 +15,15 @@
 #include "sched_states.h"
 
 struct argument {
-    char *value;
+    void *value;
     size_t arg_size;
 };
 
 struct thread {
     struct context *context;
     void (*start_function)(void *);
-    uint64_t stack;
-    uint64_t kstack;
+    void *stack;
+    void *kstack;
     size_t argc;
     struct argument *args;
     enum sched_states state;
@@ -36,17 +36,10 @@ struct thread_node {
 };
 
 void push_thread_list(struct thread_node **list, struct thread *thread);
-
 struct thread *pop_thread_list(struct thread_node **list);
-
 void shift_thread_list(struct thread_node **list);
-
 struct thread *peek_thread_list(struct thread_node *list);
-
 struct thread *create_thread(void (*start_function)(void *), int argc, struct argument *args);
-
 void change_thread_state(struct thread *thread, enum sched_states new_state);
-
-void thread_function(int argc, struct argument *args);
 
 #endif //UNTITLED_OS_THREADS_H
