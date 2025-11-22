@@ -17,7 +17,7 @@ else
     CC=gcc-13
 endif
 
-CFLAGS=-Wall -c -ggdb -ffreestanding -mgeneral-regs-only
+CFLAGS=-Wall -c -ggdb -ffreestanding -mgeneral-regs-only -fno-stack-protector
 
 GRUB := $(shell which grub2-mkrescue 2>/dev/null || which grub-mkrescue 2>/dev/null)
 ifeq ($(GRUB),)
@@ -96,14 +96,14 @@ install:
 		echo "Installing for Fedora/RHEL..."; \
 		sudo dnf install -y xorriso mtools qemu-system-x86 grub2-tools; \
 		sudo snap install gcc-13; \
-	elif [ -f /etc/debian_version ] || [ -f /etc/lsb-release ]; then \
-		echo "Installing for Debian/Ubuntu..."; \
-		sudo apt update; \
-		sudo apt install -y gcc-13 xorriso mtools qemu-system-x86 grub2-common grub-pc-bin; \
 	elif [ -f /etc/arch-release ]; then \
 		echo "Installing for Arch Linux..."; \
 		sudo pacman -Syu --noconfirm && \
 		sudo pacman -S --noconfirm gcc xorriso mtools qemu-system-x86 grub; \
+	elif [ -f /etc/debian_version ] || [ -f /etc/lsb-release ]; then \
+		echo "Installing for Debian/Ubuntu..."; \
+		sudo apt update; \
+		sudo apt install -y gcc-13 xorriso mtools qemu-system-x86 grub2-common grub-pc-bin; \
 	else \
 		echo "Unknown distribution. Please install manually: gcc-13 (or gcc), xorriso, mtools, qemu-system-x86, grub2-mkrescue/grub-mkrescue"; \
 	fi

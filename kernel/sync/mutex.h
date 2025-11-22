@@ -12,8 +12,10 @@
 #include "../sched/scheduler.h"
 
 struct mutex {
-    struct spinlock *spinlock;
-    struct thread_node *thread_list;
+    int locked;
+    struct spinlock lock;
+    struct thread_node *wait_list;
+    char *name;
 };
 
 int init_mutex(struct mutex *lk, char *name);
